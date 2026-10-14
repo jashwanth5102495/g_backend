@@ -113,6 +113,14 @@ export class CricketDataOrgProvider implements CricketProvider {
     }
   }
 
+  public get isAllKeysExhausted(): boolean {
+    const today = new Date().toISOString().slice(0, 10);
+    return (
+      (CricketDataOrgProvider.isBlockedUntilTomorrow && CricketDataOrgProvider.blockedDate === today) ||
+      !this.getActiveKey()
+    );
+  }
+
   private async fetchApi<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
     const today = new Date().toISOString().slice(0, 10);
     const paramKey = `${endpoint}:${JSON.stringify(params)}`;

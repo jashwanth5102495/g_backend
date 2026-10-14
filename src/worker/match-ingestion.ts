@@ -276,6 +276,7 @@ export class MatchIngestionWorker {
         nextScheduledPoll: this.nextScheduledPoll,
         pollIntervalMs: this.currentIntervalMs,
         isBudgetExhausted,
+        isAllKeysExhausted: !!(this.provider as any)?.isAllKeysExhausted || isBudgetExhausted,
         totalMatches: this.currentMatchesCache.length,
         liveMatches: this.currentMatchesCache.filter((m) => m.status === 'live').length,
         upcomingMatches: this.currentMatchesCache.filter((m) => m.status === 'upcoming').length,
