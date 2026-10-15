@@ -84,13 +84,18 @@ export class CricketDataOrgProvider {
             return null;
         }
     }
+    get isAllKeysExhausted() {
+        const today = new Date().toISOString().slice(0, 10);
+        return ((CricketDataOrgProvider.isBlockedUntilTomorrow && CricketDataOrgProvider.blockedDate === today) ||
+            !this.getActiveKey());
+    }
     async fetchApi(endpoint, params = {}) {
         const today = new Date().toISOString().slice(0, 10);
         const paramKey = `${endpoint}:${JSON.stringify(params)}`;
-        // 1. If provider was blocked today due to hit limits, immediately return fixture
-        if (CricketDataOrgProvider.isBlockedUntilTomorrow && CricketDataOrgProvider.blockedDate === today) {
-            console.warn(`[CricketDataOrgProvider] Daily quota exceeded on provider. Serving cached fixture for ${endpoint}.`);
-            return this.getFixtureData(endpoint, params);
+        // 1. If provider was blocked today due to hit limits across all keys
+        if (this.isAllKeysExhausted) {
+            console.warn(`[CricketDataOrgProvider] Daily quota exceeded on all API keys: out of limit for today.`);
+            throw new Error('out of limit for today');
         }
         // 2. If this specific item previously failed (e.g. scorecard not found), return fixture without retrying
         if (CricketDataOrgProvider.failedEndpoints.has(paramKey)) {
@@ -99,8 +104,8 @@ export class CricketDataOrgProvider {
         // 3. Get active key from pool
         const activeKey = this.getActiveKey();
         if (!activeKey) {
-            console.warn(`[CricketDataOrgProvider] No active CRICKET_API_KEY available in pool. Serving verified fixture for ${endpoint}.`);
-            return this.getFixtureData(endpoint, params);
+            console.warn(`[CricketDataOrgProvider] No active CRICKET_API_KEY available in pool: out of limit for today.`);
+            throw new Error('out of limit for today');
         }
         // 4. Check daily quota and rate limits before attempting live network call
         try {
@@ -166,6 +171,9 @@ export class CricketDataOrgProvider {
             return result;
         }
         catch (err) {
+            if (err.message?.includes('out of limit')) {
+                throw err;
+            }
             if (this.getActiveKey() && (err.message.includes('rate limited') || err.message.includes('quota limit'))) {
                 return this.fetchApi(endpoint, params);
             }

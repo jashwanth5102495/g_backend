@@ -26,8 +26,14 @@ export class MatchIngestionWorker {
         this.pollIntervalLiveMs = options.pollIntervalLiveMs ?? config.POLL_INTERVAL_LIVE_MS;
         const providerName = options.providerName ?? config.CRICKET_PROVIDER;
         if (providerName === 'cricketdata') {
+            const keys = config.CRICKET_API_KEYS
+                ? config.CRICKET_API_KEYS.split(',').map((k) => k.trim()).filter(Boolean)
+                : [];
+            if (config.CRICKET_API_KEY)
+                keys.push(config.CRICKET_API_KEY.trim());
             this.provider = new CricketDataOrgProvider({
                 apiKey: config.CRICKET_API_KEY || config.CRICKET_DATA_API_KEY,
+                apiKeys: keys.length > 0 ? keys : undefined,
                 dailyBudget: this.dailyBudget,
                 onCallLogged: async (info) => {
                     await this.recordCall(info.endpoint, info.statusCode, info.durationMs, info.success);
@@ -141,9 +147,10 @@ export class MatchIngestionWorker {
         try {
             const allowed = await this.canMakeCall();
             const callsToday = await this.getCallsToday();
-            if (!allowed) {
-                console.warn(`⚠️ [IngestionWorker] Quota limit reached for today (${callsToday}/${this.usableBudget}). Pausing external calls, serving stale cache.`);
-                this.lastError = `Budget reached (${callsToday}/${this.usableBudget}). Serving cached data.`;
+            const allExhausted = !!this.provider?.isAllKeysExhausted;
+            if (!allowed || allExhausted) {
+                console.warn(`⚠️ [IngestionWorker] All keys exhausted or quota limit reached for today (${callsToday}/${this.usableBudget}). Pausing external calls.`);
+                this.lastError = 'out of limit for today';
                 await this.updateMetaInRedis(true);
             }
             else {
@@ -152,8 +159,14 @@ export class MatchIngestionWorker {
             }
         }
         catch (err) {
-            this.lastError = err.message;
+            if (err.message?.includes('out of limit') || this.provider?.isAllKeysExhausted) {
+                this.lastError = 'out of limit for today';
+            }
+            else {
+                this.lastError = err.message;
+            }
             console.error('[IngestionWorker] Poll cycle error:', err.message);
+            await this.updateMetaInRedis(true);
         }
         // Schedule next poll
         if (this.isRunning) {
@@ -200,10 +213,13 @@ export class MatchIngestionWorker {
                 callsToday,
                 remainingBudget: Math.max(0, this.usableBudget - callsToday),
                 lastSuccessfulFetch: this.lastSuccessfulFetch,
-                lastError: this.lastError,
+                lastError: this.provider?.isAllKeysExhausted || isBudgetExhausted || this.lastError?.includes('out of limit')
+                    ? 'out of limit for today'
+                    : this.lastError,
                 nextScheduledPoll: this.nextScheduledPoll,
                 pollIntervalMs: this.currentIntervalMs,
                 isBudgetExhausted,
+                isAllKeysExhausted: !!this.provider?.isAllKeysExhausted || isBudgetExhausted,
                 totalMatches: this.currentMatchesCache.length,
                 liveMatches: this.currentMatchesCache.filter((m) => m.status === 'live').length,
                 upcomingMatches: this.currentMatchesCache.filter((m) => m.status === 'upcoming').length,

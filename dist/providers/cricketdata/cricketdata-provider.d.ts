@@ -34,6 +34,7 @@ export declare class CricketDataOrgProvider implements CricketProvider {
     constructor(options?: CricketDataOrgOptions);
     private getActiveKey;
     private markKeyExhausted;
+    get isAllKeysExhausted(): boolean;
     private fetchApi;
     private getFixtureData;
     getQuotaStats(): {
