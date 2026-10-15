@@ -56,7 +56,7 @@ try {
 // Start Server
 const start = async () => {
   try {
-    const port = Number(process.env.PORT) || config.PORT || 4001;
+    const port = Number(process.env.BACKEND_PORT) || 4001;
     const host = config.HOST || '0.0.0.0';
 
     await server.listen({ port, host });
